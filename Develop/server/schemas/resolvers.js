@@ -4,19 +4,6 @@ const { signToken } = require('../utils/auth');
 
 const resolvers = {
     Query: {
-        users: async () => {
-            return User.find().populate("books");
-        },
-        user: async (parent, { username }) => {
-            return User.findOne({ username }).populate("books");
-        },
-        books: async (parent, { username }) => {
-            const params = username ? { username } : {};
-            return Book.find(params).sort({})
-        },
-        book: async (parent, { bookID }) => {
-            return Book.findOne({ _id: bookID });
-        },
         me: async (parent, args, context) => {
             if (context.user) {
                 return User.findOne({ _id: context.user._id }).populate("books");
@@ -26,13 +13,13 @@ const resolvers = {
     },
 
     Mutation: {
-        addUser: async (parent, {username, email, password}) => {
-            const user = await User.create({username, email, password});
+        addUser: async (parent, args) => {
+            const user = await User.create(args);
             const token = signToken(user);
             return {token, user};
         },
-        login: async (parent, {email, password}) => {
-            const user = await User.findOne({email});
+        login: async (parent, { email, password }) => {
+            const user = await User.findOne({ email });
 
             if (!user) {
                 throw new AuthenticationError('No user found with this email address');
@@ -48,29 +35,26 @@ const resolvers = {
 
             return {token, user};
         },
-        savedBooks: async (parent, { username }, context) => {
+        savedBooks: async (parent, args, context) => {
             if (context.user) {
-                const updatedUser = await User.findOneAndUpdate(
+                const updatedUser = await User.findByIdAndUpdate(
                     { _id: context.user._id },
-                    { $pull: { savedBooks: username } },
-                    { new: true, runValidators: true }
+                    { $addToSet: { savedBooks: args.input } },
+                    { new: true }
                 );
                 return updatedUser;
             }
             throw new AuthenticationError("Unable to save book");
         },
-        removeBook: async (parent, { bookId }, context) => {
+        removeBook: async (parent, args, context) => {
             if (context.user) {
-                const book = await Book.findOneAndDelete({
-                    _id: bookId,
-                    authors: context.user.username,
-                });
-                await User.findOneAndUpdate(
+                const updatedUser = await User.findOneAndUpdate(
                     { _id: context.user._id },
-                    { $pull: { books: book._id } }
+                    { $pull: { savedBooks: { bookId: args.bookId } } },
+                { new: true }
                 );
 
-                return book;
+                return updatedUser;
             }
 
             throw new AuthenticationError("You can not remove this book");
